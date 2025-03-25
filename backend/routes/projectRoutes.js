@@ -3,15 +3,12 @@ const express = require('express');
 const router = express.Router();
 const { 
   getProjects, 
-  getProject, 
-  getUserProjects, 
+  getProjectById,
+  getProjectsByUser,
   createProject, 
   updateProject, 
   deleteProject
 } = require('../controllers/projectController');
-
-// If you have auth middleware
-// const { protect } = require('../middleware/authMiddleware');
 
 // Routes
 router.route('/')
@@ -19,10 +16,10 @@ router.route('/')
   .post(createProject);
 
 router.route('/user/:userId')
-  .get(getUserProjects);
+  .get(getProjectsByUser);
 
 router.route('/:id')
-  .get(getProject)
+  .get(getProjectById)
   .put(updateProject)
   .delete(deleteProject);
 

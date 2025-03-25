@@ -1,5 +1,6 @@
 // backend/controllers/intakeFormController.js
 const IntakeForm = require('../models/intakeFormModel');
+const aiService = require('../services/aiService');
 
 // @desc    Create a new intake form
 // @route   POST /api/intake
@@ -18,6 +19,11 @@ const createIntakeForm = async (req, res) => {
     
     const intakeForm = new IntakeForm({
       user: req.body.userId,
+      
+      // NEW: PDA Upload Information (if provided)
+      ppdaUpload: formData.ppdaUpload || {
+        hasUploadedFile: false
+      },
       
       // Section 1: Applicant Information
       applicantName: formData.applicantName,
@@ -152,6 +158,11 @@ const updateIntakeForm = async (req, res) => {
       const otherCosts = parseFloat(formData.otherCosts) || 0;
       const totalCost = laborCosts + materialsSupplies + equipmentCosts + contractedServices + otherCosts;
       
+      // Update PDA Upload Information
+      if (formData.ppdaUpload) {
+        form.ppdaUpload = formData.ppdaUpload;
+      }
+      
       // Update Section 1: Applicant Information
       form.applicantName = formData.applicantName || form.applicantName;
       form.applicantType = formData.applicantType || form.applicantType;
@@ -220,7 +231,7 @@ const updateIntakeForm = async (req, res) => {
       }
       
       // Run validation to check for PAPPG compliance
-      // This would be replaced with actual SnapLogic AI integration
+      // This would be replaced with actual AI integration
       const validationWarnings = [];
       let approvalProbability = 0.90;
       
@@ -274,7 +285,7 @@ const generateFemaForms = async (req, res) => {
       return res.status(404).json({ message: 'Intake form not found' });
     }
     
-    // This is where we would call SnapLogic pipelines to generate forms
+    // This is where we would call AI service to generate forms
     // For now, we'll simulate by adding placeholder generated forms
     
     const generatedForms = [
@@ -335,35 +346,50 @@ const validatePappgCompliance = async (req, res) => {
       return res.status(404).json({ message: 'Intake form not found' });
     }
     
-    // This would integrate with SnapLogic AI for PAPPG validation
-    // For now, we'll simulate with basic validation logic
-    
-    const validationIssues = [];
-    let complianceScore = 100;
-    
-    // Basic compliance checks (in a real app, this would be much more comprehensive)
-    if (!form.projectName || form.projectName.trim() === '') {
-      validationIssues.push('Project Name is required');
-      complianceScore -= 5;
-    }
-    
-    if (!form.scopeOfWork || form.scopeOfWork.length < 100) {
-      validationIssues.push('Scope of Work requires more detailed description (min. 100 characters)');
-      complianceScore -= 10;
-    }
-    
-    if (form.costBreakdown.total <= 0) {
-      validationIssues.push('Project must have estimated costs greater than $0');
-      complianceScore -= 15;
-    }
-    
-    if (form.documents && form.documents.length === 0) {
-      validationIssues.push('Supporting documentation is required for FEMA review');
-      complianceScore -= 20;
-    }
-    
-    // Update the form with validation results
-    form.aiProcessingResults.pappgCompliance = {
+    // Here we'll use our AI service for PAPPG validation
+    try {
+      const validationResults = await aiService.validateFormAgainstPAPPG(form);
+      
+      // Update the form with validation results
+      form.aiProcessingResults.pappgCompliance = {
+        isCompliant: validationResults.isValid,
+        complianceIssues: validationResults.issues.map(issue => issue.message),
+        complianceScore: validationResults.validationScore
+      };
+      
+      await form.save();
+      
+      res.json(validationResults);
+    } catch (aiError) {
+      console.error('Error calling AI service:', aiError);
+      
+      // Fallback to basic validation if AI service fails
+      const validationIssues = [];
+      let complianceScore = 100;
+      
+      // Basic compliance checks
+      if (!form.projectName || form.projectName.trim() === '') {
+        validationIssues.push('Project Name is required');
+        complianceScore -= 5;
+      }
+      
+      if (!form.scopeOfWork || form.scopeOfWork.length < 100) {
+        validationIssues.push('Scope of Work requires more detailed description (min. 100 characters)');
+        complianceScore -= 10;
+      }
+      
+      if (form.costBreakdown.total <= 0) {
+        validationIssues.push('Project must have estimated costs greater than $0');
+        complianceScore -= 15;
+      }
+      
+      if (form.documents && form.documents.length === 0) {
+        validationIssues.push('Supporting documentation is required for FEMA review');
+        complianceScore -= 20;
+      }
+      
+      // Update the form with validation results
+     form.aiProcessingResults.pappgCompliance = {
       isCompliant: validationIssues.length === 0,
       complianceIssues: validationIssues,
       complianceScore: Math.max(0, complianceScore)
@@ -372,21 +398,121 @@ const validatePappgCompliance = async (req, res) => {
     await form.save();
     
     res.json({
-      isCompliant: validationIssues.length === 0,
-      complianceScore,
-      validationIssues,
-      recommendations: validationIssues.map(issue => `Fix: ${issue}`)
+      isValid: validationIssues.length === 0,
+      validationScore: complianceScore,
+      issues: validationIssues.map(issue => ({
+        field: 'unknown',
+        severity: 'warning',
+        message: issue,
+        suggestion: `Fix: ${issue}`
+      }))
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
   }
+} catch (error) {
+  res.status(500).json({ message: error.message });
+}
+};
+
+// NEW CONTROLLER FUNCTIONS FOR AI INTEGRATION
+
+// @desc    Process PDA or Survey123 document and extract data
+// @route   POST /api/intake/process-pda
+// @access  Public
+const processPDADocument = async (req, res) => {
+try {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  // Extract data from the document using AI
+  const extractedData = await aiService.extractDataFromDocument(
+    req.file.buffer,
+    req.body.fileType || 'PDA'
+  );
+
+  res.json({
+    success: true,
+    extractedData,
+    message: 'Document processed successfully'
+  });
+} catch (error) {
+  console.error('Error processing PDA document:', error);
+  res.status(500).json({ 
+    message: 'Failed to process document',
+    error: error.message
+  });
+}
+};
+
+// @desc    Validate form data against PAPPG using AI
+// @route   POST /api/intake/validate-ai
+// @access  Public
+const validateWithAI = async (req, res) => {
+try {
+  const formData = req.body;
+  
+  // Validate form against PAPPG using AI
+  const validationResults = await aiService.validateFormAgainstPAPPG(formData);
+  
+  res.json(validationResults);
+} catch (error) {
+  console.error('Error validating with AI:', error);
+  res.status(500).json({ 
+    message: 'Failed to validate form',
+    error: error.message
+  });
+}
+};
+
+// @desc    Get AI suggestions for form completion
+// @route   POST /api/intake/suggestions
+// @access  Public
+const getFormSuggestions = async (req, res) => {
+try {
+  const currentFormData = req.body;
+  
+  // Generate suggestions using AI
+  const suggestions = await aiService.generateFormSuggestions(currentFormData);
+  
+  res.json(suggestions);
+} catch (error) {
+  console.error('Error getting form suggestions:', error);
+  res.status(500).json({ 
+    message: 'Failed to generate suggestions',
+    error: error.message
+  });
+}
+};
+
+// @desc    Check cost estimates against FEMA guidelines
+// @route   POST /api/intake/validate-costs
+// @access  Public
+const validateCosts = async (req, res) => {
+try {
+  const costData = req.body;
+  
+  // Validate costs using AI
+  const validationResults = await aiService.validateCostEstimates(costData);
+  
+  res.json(validationResults);
+} catch (error) {
+  console.error('Error validating costs:', error);
+  res.status(500).json({ 
+    message: 'Failed to validate cost estimates',
+    error: error.message
+  });
+}
 };
 
 module.exports = {
-  createIntakeForm,
-  getIntakeFormsByUser,
-  getIntakeFormById,
-  updateIntakeForm,
-  generateFemaForms,
-  validatePappgCompliance
+createIntakeForm,
+getIntakeFormsByUser,
+getIntakeFormById,
+updateIntakeForm,
+generateFemaForms,
+validatePappgCompliance,
+processPDADocument,
+validateWithAI,
+getFormSuggestions,
+validateCosts
 };

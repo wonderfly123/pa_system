@@ -1,10 +1,11 @@
 // src/pages/MasterIntakeForm.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Container, Paper, Typography, Stepper, Step, StepLabel, 
-  Button, Box, Alert
+  Button, Box, Alert, CircularProgress, Snackbar
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import SurveyPdaUpload from '../components/FormStepComponents/SurveyPdaUpload';
 import ApplicantInfo from '../components/FormStepComponents/ApplicantInfo';
 import DisasterInfo from '../components/FormStepComponents/DisasterInfo';
 import ProjectInfo from '../components/FormStepComponents/ProjectInfo';
@@ -19,6 +20,13 @@ const MasterIntakeForm = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState({
     // Initialize with empty values for all fields
+    // PDA Upload
+    ppdaUpload: {
+      hasUploadedFile: false,
+      fileType: '',
+      fileName: ''
+    },
+    
     // Applicant Information
     applicantName: '',
     applicantType: '',
@@ -74,8 +82,16 @@ const MasterIntakeForm = () => {
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
   const [formErrors, setFormErrors] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [suggestions, setSuggestions] = useState(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [aiNotification, setAiNotification] = useState({ open: false, message: '', severity: 'info' });
 
+  // For demo, using a hardcoded user ID
+  const userId = '60d21b4667d0d8992e610c85';
+
+  // Updated steps array to include new Survey/PDA Upload step
   const steps = [
+    'Survey/PDA Upload',
     'Applicant Information',
     'Disaster Information',
     'Project Information',
@@ -84,6 +100,71 @@ const MasterIntakeForm = () => {
     'Compliance & Certification',
     'Review & Generate'
   ];
+
+  // Request AI suggestions when moving between steps or when key fields change
+  useEffect(() => {
+    // Only get suggestions if we have some basic data
+    const getSuggestions = async () => {
+      if (formData.projectName || formData.applicantName || formData.disasterNumber) {
+        setLoadingSuggestions(true);
+        try {
+          const response = await api.getFormSuggestions(formData);
+          setSuggestions(response.data);
+          
+          // If we got new suggestions, show a notification
+          if (response.data && Object.keys(response.data).length > 0) {
+            setAiNotification({
+              open: true, 
+              message: 'AI has suggested improvements to your form',
+              severity: 'info'
+            });
+          }
+        } catch (error) {
+          console.error('Error getting suggestions:', error);
+        } finally {
+          setLoadingSuggestions(false);
+        }
+      }
+    };
+
+    // Don't call for suggestions on every change - only when steps change
+    if (activeStep > 0) {
+      getSuggestions();
+    }
+  }, [activeStep]);
+
+  // Validate costs when reaching the budget step
+  useEffect(() => {
+    const validateCostEstimates = async () => {
+      if (activeStep === 4 && 
+          (formData.laborCosts || formData.equipmentCosts || formData.materialsSupplies)) {
+        try {
+          const costData = {
+            laborCosts: formData.laborCosts,
+            equipmentCosts: formData.equipmentCosts,
+            materialsSupplies: formData.materialsSupplies,
+            contractedServices: formData.contractedServices,
+            otherCosts: formData.otherCosts,
+            total: parseFloat(formData.estimatedTotalCost) || 0
+          };
+          
+          const response = await api.validateCosts(costData);
+          
+          if (response.data && !response.data.isCompliant) {
+            setAiNotification({
+              open: true,
+              message: 'AI detected potential issues with cost estimates',
+              severity: 'warning'
+            });
+          }
+        } catch (error) {
+          console.error('Error validating costs:', error);
+        }
+      }
+    };
+    
+    validateCostEstimates();
+  }, [activeStep, formData.laborCosts, formData.equipmentCosts, formData.materialsSupplies]);
 
   const handleNext = () => {
     setActiveStep((prevActiveStep) => prevActiveStep + 1);
@@ -114,13 +195,74 @@ const MasterIntakeForm = () => {
     setUploadedDocuments([...uploadedDocuments, ...newDocuments]);
   };
 
+  // Function to update the form with extracted data from PDA/Survey123
+  const updateFormWithExtractedData = (extractedData) => {
+    setFormData(prevData => ({
+      ...prevData,
+      ...extractedData,
+      ppdaUpload: {
+        hasUploadedFile: true,
+        fileType: 'pda',
+        fileName: extractedData.fileName || '',
+      }
+    }));
+    
+    // Show success notification
+    setAiNotification({
+      open: true,
+      message: 'AI has pre-filled your form with extracted data',
+      severity: 'success'
+    });
+  };
+
+  // Function to apply AI suggestions
+  const applySuggestion = (field, value) => {
+    setFormData({
+      ...formData,
+      [field]: value
+    });
+    
+    // Show success notification
+    setAiNotification({
+      open: true,
+      message: `Applied AI suggestion for ${field}`,
+      severity: 'success'
+    });
+  };
+
+  // Close notification
+  const handleCloseNotification = () => {
+    setAiNotification({
+      ...aiNotification,
+      open: false
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
       setFormErrors([]);
       
-      // First, create or update the intake form
-      const formResponse = await api.createIntakeForm(formData);
+      // Validate form against PAPPG before submitting
+      try {
+        const validation = await api.validateWithAI(formData);
+        if (validation.data && !validation.data.isValid) {
+          setFormErrors([
+            'AI validation detected compliance issues. Please review the form before submitting.'
+          ]);
+          setIsSubmitting(false);
+          return;
+        }
+      } catch (validationError) {
+        console.error('Validation error:', validationError);
+        // Continue with submission even if validation fails
+      }
+      
+      // Create or update the intake form
+      const formResponse = await api.createIntakeForm({
+        ...formData,
+        userId // Add the user ID to the form data
+      });
       
       // Then upload any documents
       if (uploadedDocuments.length > 0) {
@@ -147,13 +289,49 @@ const MasterIntakeForm = () => {
 
   const getStepContent = (step) => {
     switch (step) {
-      case 0: return <ApplicantInfo formData={formData} handleChange={handleChange} />;
-      case 1: return <DisasterInfo formData={formData} handleChange={handleChange} />;
-      case 2: return <ProjectInfo formData={formData} handleChange={handleChange} />;
-      case 3: return <CostBudgetInfo formData={formData} handleChange={handleChange} />;
-      case 4: return <DocumentRequirements formData={formData} handleChange={handleChange} handleFileUpload={handleFileUpload} />;
-      case 5: return <ComplianceCertification formData={formData} handleChange={handleChange} />;
-      case 6: return <FormReview formData={formData} handleSubmit={handleSubmit} goToStep={setActiveStep} />;
+      case 0: return <SurveyPdaUpload 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        updateFormData={updateFormWithExtractedData} 
+                      />;
+      case 1: return <ApplicantInfo 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        suggestions={suggestions} 
+                        applySuggestion={applySuggestion} 
+                      />;
+      case 2: return <DisasterInfo 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        suggestions={suggestions} 
+                        applySuggestion={applySuggestion} 
+                      />;
+      case 3: return <ProjectInfo 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        suggestions={suggestions} 
+                        applySuggestion={applySuggestion} 
+                      />;
+      case 4: return <CostBudgetInfo 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        suggestions={suggestions} 
+                        applySuggestion={applySuggestion} 
+                      />;
+      case 5: return <DocumentRequirements 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                        handleFileUpload={handleFileUpload} 
+                      />;
+      case 6: return <ComplianceCertification 
+                        formData={formData} 
+                        handleChange={handleChange} 
+                      />;
+      case 7: return <FormReview 
+                        formData={formData} 
+                        handleSubmit={handleSubmit} 
+                        goToStep={setActiveStep} 
+                      />;
       default: return 'Unknown step';
     }
   };
@@ -183,6 +361,15 @@ const MasterIntakeForm = () => {
                 {error}
               </Alert>
             ))}
+          </Box>
+        )}
+        
+        {loadingSuggestions && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+              AI is analyzing your form...
+            </Typography>
           </Box>
         )}
         
@@ -220,6 +407,22 @@ const MasterIntakeForm = () => {
           </Box>
         </Box>
       </Paper>
+      
+      {/* AI Notifications */}
+      <Snackbar 
+        open={aiNotification.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={aiNotification.severity} 
+          sx={{ width: '100%' }}
+        >
+          {aiNotification.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

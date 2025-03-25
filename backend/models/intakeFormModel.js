@@ -8,6 +8,28 @@ const intakeFormSchema = mongoose.Schema(
       required: true,
       ref: 'User',
     },
+    // NEW: Initial Survey/PDA Upload
+    ppdaUpload: {
+      hasUploadedFile: {
+        type: Boolean,
+        default: false
+      },
+      fileType: {
+        type: String,
+        enum: ['pda', 'survey123', 'other', ''],
+        default: ''
+      },
+      fileName: String,
+      filePath: String,
+      extractedData: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+      },
+      uploadDate: {
+        type: Date,
+        default: Date.now
+      }
+    },
     // Section 1: Applicant Information
     applicantName: {
       type: String,

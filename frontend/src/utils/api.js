@@ -37,6 +37,16 @@ const api = {
     });
   },
   deleteDocument: (id) => axios.delete(`${API_URL}/documents/${id}`),
+  
+  // NEW: AI Integration Endpoints
+  processPDADocument: (formData) => axios.post(`${API_URL}/intake/process-pda`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
+  validateWithAI: (formData) => axios.post(`${API_URL}/intake/validate-ai`, formData),
+  getFormSuggestions: (formData) => axios.post(`${API_URL}/intake/suggestions`, formData),
+  validateCosts: (costData) => axios.post(`${API_URL}/intake/validate-costs`, costData),
 };
 
 export default api;
