@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import Dashboard from './pages/Dashboard';
 import ProjectDetail from './pages/ProjectDetail';
 import NewProject from './pages/NewProject';
@@ -9,6 +9,9 @@ import Header from './components/Header';
 import MasterIntakeForm from './pages/MasterIntakeForm';
 import FormGeneration from './pages/FormGeneration';
 import theme from './theme';
+
+// Import the PA Assistant Widget
+import PAAssistantWidget from './components/PAAssistantWidget';
 
 function App() {
   return (
@@ -26,6 +29,9 @@ function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
+        
+        {/* PA Assistant Widget - will appear on all pages */}
+        <PAAssistantWidget />
       </Router>
     </ThemeProvider>
   );
