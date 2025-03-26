@@ -24,9 +24,9 @@ import CompressIcon from '@mui/icons-material/Compress';
 import axios from 'axios';
 
 // Constants
-// Try with HTTPS - if that doesn't work, we can try HTTP 
-const API_URL = "https://prodeu-connectfasterinc-cloud-fm.emea.snaplogic.io/api/1/rest/feed/run/task/ConnectFasterInc/Jordan%20Millhausen/Millhausen_pa_system/PASystemAgentDriver_api_v2";
-// If this token is invalid, replace it with your actual API token
+// Updated to use port 5001 (matching your server port)
+const API_URL = "http://localhost:5001/api/pa-assistant";
+// Bearer token is handled by the backend proxy
 const BEARER_TOKEN = "12345"; 
 
 // For debugging - create a proxy URL using a CORS proxy service
@@ -242,8 +242,8 @@ const PAAssistantWidget = () => {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
-            withCredentials: false,
-            timeout: 10000
+            withCredentials: false
+            // Removed timeout to avoid timeout errors
           }
         );
         
@@ -295,7 +295,6 @@ const PAAssistantWidget = () => {
     try {
       console.log('Attempting API request to:', API_URL);
       console.log('Request payload:', { message: userMessage });
-      console.log('Using bearer token:', BEARER_TOKEN);
       
       // Determine which URL to use (direct or CORS proxy)
       const requestURL = USE_CORS_PROXY ? CORS_PROXY + encodeURIComponent(API_URL) : API_URL;
@@ -310,8 +309,8 @@ const PAAssistantWidget = () => {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          withCredentials: false,
-          timeout: 10000 // 10 second timeout
+          withCredentials: false
+          // Removed timeout to avoid timeout errors
         }
       );
       
@@ -366,7 +365,7 @@ const PAAssistantWidget = () => {
         
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: `Sorry, I encountered an error while connecting to the service: ${errorDetails}. This might be due to an invalid token or the service being unavailable.` 
+        content: `Sorry, I encountered an error while connecting to the service: ${errorDetails}. Please try again later or contact support if the issue persists.` 
       }]);
     } finally {
       setIsLoading(false);
@@ -508,128 +507,128 @@ const PAAssistantWidget = () => {
               }}
             >
               {/* Chat messages */}
-<Box
-  sx={{
-    flex: '1',
-    overflow: 'auto',
-    mb: 2,
-    pr: 1,
-    display: 'flex',
-    flexDirection: 'column'
-  }}
->
-  {messages.map((msg, index) => (
-    <Box
-      key={index}
-      sx={{
-        alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-        bgcolor: msg.role === 'user' ? 'grey.100' : 'primary.light',
-        color: msg.role === 'user' ? 'inherit' : 'primary.contrastText',
-        borderRadius: '4px',
-        padding: 1,
-        marginBottom: 1,
-        maxWidth: '80%'
-      }}
-    >
-      <Typography variant="body2">
-        <strong>{msg.role === 'user' ? '👤 You:' : '🤖 Assistant:'}</strong> {msg.content}
-      </Typography>
-    </Box>
-  ))}
-  {isLoading && (
-    <Box
-      sx={{
-        alignSelf: 'flex-start',
-        bgcolor: 'primary.light',
-        color: 'primary.contrastText',
-        borderRadius: '4px',
-        padding: 1,
-        marginBottom: 1,
-        maxWidth: '80%'
-      }}
-    >
-      <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
-        <strong>🤖 Assistant:</strong>&nbsp;
-        <span className="typing-indicator">
-          <span className="dot"></span>
-          <span className="dot"></span>
-          <span className="dot"></span>
-        </span>
-      </Typography>
-    </Box>
-  )}
-  <div ref={messageEndRef} />
-</Box>
+              <Box
+                sx={{
+                  flex: '1',
+                  overflow: 'auto',
+                  mb: 2,
+                  pr: 1,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+              >
+                {messages.map((msg, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      bgcolor: msg.role === 'user' ? 'grey.100' : 'primary.light',
+                      color: msg.role === 'user' ? 'inherit' : 'primary.contrastText',
+                      borderRadius: '4px',
+                      padding: 1,
+                      marginBottom: 1,
+                      maxWidth: '80%'
+                    }}
+                  >
+                    <Typography variant="body2">
+                      <strong>{msg.role === 'user' ? '👤 You:' : '🤖 Assistant:'}</strong> {msg.content}
+                    </Typography>
+                  </Box>
+                ))}
+                {isLoading && (
+                  <Box
+                    sx={{
+                      alignSelf: 'flex-start',
+                      bgcolor: 'primary.light',
+                      color: 'primary.contrastText',
+                      borderRadius: '4px',
+                      padding: 1,
+                      marginBottom: 1,
+                      maxWidth: '80%'
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                      <strong>🤖 Assistant:</strong>&nbsp;
+                      <span className="typing-indicator">
+                        <span className="dot"></span>
+                        <span className="dot"></span>
+                        <span className="dot"></span>
+                      </span>
+                    </Typography>
+                  </Box>
+                )}
+                <div ref={messageEndRef} />
+              </Box>
 
-{/* Input area */}
-<Box sx={{ display: 'flex', gap: 1, position: 'relative' }}>
-  <IconButton 
-    size="small" 
-    onClick={() => setShowSampleQueries(!showSampleQueries)}
-    sx={{ color: 'primary.main' }}
-    title="Sample questions"
-  >
-    <HelpOutlineIcon fontSize="small" />
-  </IconButton>
-  
-  {showSampleQueries && (
-    <Paper
-      elevation={3}
-      sx={{
-        position: 'absolute',
-        bottom: '60px',
-        left: '10px',
-        width: 'calc(100% - 20px)',
-        zIndex: 1001,
-        maxHeight: '200px',
-        overflow: 'auto',
-        p: 1
-      }}
-    >
-      <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>
-        Sample Questions:
-      </Typography>
-      {sampleQueries.map((query, index) => (
-        <Box 
-          key={index}
-          sx={{ 
-            p: 1, 
-            cursor: 'pointer', 
-            '&:hover': { bgcolor: 'grey.100' },
-            borderRadius: 1,
-            mb: 0.5
-          }}
-          onClick={() => handleSampleQueryClick(query)}
-        >
-          <Typography variant="body2">{query}</Typography>
-        </Box>
-      ))}
-    </Paper>
-  )}
-  
-  <TextField
-    fullWidth
-    variant="outlined"
-    size="small"
-    placeholder="Ask about FEMA Public Assistance..."
-    value={userInput}
-    onChange={(e) => setUserInput(e.target.value)}
-    onKeyPress={handleKeyPress}
-  />
-  <IconButton
-    color="primary"
-    onClick={sendMessage}
-    disabled={!userInput.trim() || isLoading}
-  >
-    <SendIcon />
-  </IconButton>
-</Box>
-</Box>
-)}
-</Paper>
-)}
-</>
-);
+              {/* Input area */}
+              <Box sx={{ display: 'flex', gap: 1, position: 'relative' }}>
+                <IconButton 
+                  size="small" 
+                  onClick={() => setShowSampleQueries(!showSampleQueries)}
+                  sx={{ color: 'primary.main' }}
+                  title="Sample questions"
+                >
+                  <HelpOutlineIcon fontSize="small" />
+                </IconButton>
+                
+                {showSampleQueries && (
+                  <Paper
+                    elevation={3}
+                    sx={{
+                      position: 'absolute',
+                      bottom: '60px',
+                      left: '10px',
+                      width: 'calc(100% - 20px)',
+                      zIndex: 1001,
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      p: 1
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>
+                      Sample Questions:
+                    </Typography>
+                    {sampleQueries.map((query, index) => (
+                      <Box 
+                        key={index}
+                        sx={{ 
+                          p: 1, 
+                          cursor: 'pointer', 
+                          '&:hover': { bgcolor: 'grey.100' },
+                          borderRadius: 1,
+                          mb: 0.5
+                        }}
+                        onClick={() => handleSampleQueryClick(query)}
+                      >
+                        <Typography variant="body2">{query}</Typography>
+                      </Box>
+                    ))}
+                  </Paper>
+                )}
+                
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  placeholder="Ask about FEMA Public Assistance..."
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                />
+                <IconButton
+                  color="primary"
+                  onClick={sendMessage}
+                  disabled={!userInput.trim() || isLoading}
+                >
+                  <SendIcon />
+                </IconButton>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+      )}
+    </>
+  );
 };
 
 export default PAAssistantWidget;
